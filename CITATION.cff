@@ -1,0 +1,40 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: Public Transport Allocator
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Chris
+    family-names: Jacobs-Crisioni
+    email: chris@jacobs-crisioni.nl
+    affiliation: Bureau Jacobs-Crisioni
+    orcid: 'https://orcid.org/0000-0001-6225-4813'
+repository-code: >-
+  https://github.com/cjacobscrisioni/PublicTransportAllocator.git
+repository: >-
+  https://data.jrc.ec.europa.eu/dataset/0c6b9751-a71f-4062-830b-43c9f432370f
+abstract: >-
+  The question whether denser cities foster shorter public
+  transport networks is problematic because real-world
+  transport nets are a product of many additional factors
+  presumably not related to urban form. The author has
+  written a paper that adopts a network expansion simulation
+  approach to generate and analyse counterfactual data on
+  network lengths for 36 world cities, in which all networks
+  are generated with similar expansion restrictions and
+  objectives. Denser cities are found to have shorter
+  simulated public transport networks, regardless of tested
+  model parameters. This repository contains the scripts to
+  generate transport networks for world cities. Besides
+  these data, population grids and urban system boundaries
+  (eg FUAs) are also required.
+keywords:
+  - Transport network expansion
+  - Public transport allocator
+  - Urban analysis
+  - Counterfactual simulation
+license: GPL-3.0
