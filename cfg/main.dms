@@ -1,0 +1,295 @@
+container PublicTransportAllocator
+{
+	unit<dpoint> CoordSys: Descr = "Mollweide Global Projection",	Format = "EPSG:54009"; // EPSG code for Lambert EA 
+	
+	parameter<float32> WalkSpeed: 	expr = "float32(4 * 1000) / float32(60 * 60)";
+	parameter<float32> PTSpeed:		expr = "float32(30 * 1000) / float32(60 * 60)";
+	parameter<float32> b1:			expr = "float32(-1.5)";
+	parameter<float32> alonso_a:	expr = "float32(0.0)";
+	parameter<float32> fixedcost:	expr = "float32(10000)";
+	parameter<float32> Circuitry:	expr = "float32(1.5)";
+	parameter<float32> ConnectGoal:	expr = "float32(0.8)";
+	//parameter<float32> ConnectGoal: expr = "float32(2090)";
+	parameter<float32> penalty:	expr = "float32(10 * 60)";
+	
+	#include<SourceData.dms>
+	#include<search_optimum_path.dms>
+	#include<sensitivity_tests.dms>
+	#include<Templates.dms>
+	#include<NetworkStatistics.dms>
+	
+	//parameter<bool> calc_all: expr = "True", ExplicitSuppliers = "= AsList(SourceData/CityBoundaries/Pop > int32(250000) ? 'LargeFUAs/'+SourceData/CityBoundaries/ZoneId + '/Store' : '', ';')";
+	
+	Container LargeFUAs: expr = "for_each_ne(SourceData/CityBoundaries/ZoneId, 'GovernAnalysis('+ string(id(SourceData/CityBoundaries)) +')')";
+	
+	Container CollectLargeFUAresults_Bf {
+		container loadShapes: expr = "for_each_ne(SourceData/CityBoundaries/ZoneId, 'Templates/loadDataFile_arc('+quote('%LocalDataProjDir%/results/'+ SourceData/CityBoundaries/ZoneId +'_Bf_net')+', /LargeFUAs/'+SourceData/CityBoundaries/ZoneId+'/Setup/CityObservations)')";
+		unit<uint32> LargeFUAs: expr = "SourceData/CityBoundaries", DialogData = "Geometry", DialogType = "map" {
+			attribute<CoordSys> Geometry (poly): 	expr = "SourceData/CityBoundaries/Geometry";
+			attribute<string>	 ZoneId: 			expr = "SourceData/CityBoundaries/ZoneId";
+			attribute<int32> 	 Pop:				expr = "SourceData/CityBoundaries/Pop";
+			attribute<int32> 	 HDC_Pop:			expr = "SourceData/CityBoundaries/HDC_Pop";
+			attribute<float32> 	 PWD:				expr = "SourceData/CityBoundaries/PWD";
+			attribute<float32>	 PWD_HDC:			expr = "SourceData/CityBoundaries/PWD_HDC";
+			attribute<float32>	 PWD_Comm:			expr = "SourceData/CityBoundaries/PWD_Comm";
+			attribute<float32>   NetLen:			expr = "= 'union_data(.,'+AsItemList('loadShapes/'+ZoneId+'/Statistics/Length')+')'";
+			attribute<float32>   NetLen_HDC:		expr = "= 'union_data(.,'+AsItemList('loadShapes/'+ZoneId+'/Statistics/length_inHDC')+')'";
+			attribute<uint32>    MaxStep:			expr = "= 'union_data(.,'+AsItemList('loadShapes/'+ZoneId+'/Statistics/MaxStep')+')'";
+			attribute<float32>	 ConnPop:			expr = "= 'union_data(.,'+AsItemList('loadShapes/'+ZoneId+'/Statistics/ConnPop')+')'";
+			attribute<float32>	 ConnPop_HDC:		expr = "= 'union_data(.,'+AsItemList('loadShapes/'+ZoneId+'/Statistics/ConnPop_HDC')+')'";
+			attribute<float32>	 NetLenPerCapita:	expr = "NetLen / Pop[float32]";
+			attribute<float32>	 NetLenPerCapitaHDC:expr = "NetLen_HDC / float32(HDC_Pop)";
+		}
+		unit<uint32> NoResults: expr = "subset(IsNull(LargeFUAs/NetLen))" {attribute<string> ZoneId: expr = "LargeFUAs/ZoneId[Nr_OrgEntity]";}
+		unit<uint32> BigShape: 	expr = "= 'union_unit(' + AsItemList(IsDefined(LargeFUAs/NetLen) ? 'loadShapes/'+ LargeFUAs/ZoneId + '/inFile' : '')+')'" {
+			attribute<CoordSys> Geometry (arc): 	expr = "= 'union_data(.,' + AsItemList(IsDefined(LargeFUAs/NetLen) ? 'loadShapes/'+ LargeFUAs/ZoneId + '/inFile/Geometry' : '')+')'", StorageName = "%LocalDataProjDir%/results/Bigshape_Bf.shp";
+			attribute<string>	 Fua:				expr = "= 'union_data(.,' + AsItemList(IsDefined(LargeFUAs/NetLen) ? 'const('+quote(LargeFUAs/ZoneId)+', loadShapes/'+ LargeFUAs/ZoneId + '/inFile, string)' : '')+')'", StorageName = "%LocalDataProjDir%/results/Bigshape_Bf.dbf";
+			attribute<uint32>	 StepNr:			expr = "= 'union_data(.,' + AsItemList(IsDefined(LargeFUAs/NetLen) ? 'loadShapes/'+ LargeFUAs/ZoneId + '/inFile/Step' : '')+')'", StorageName = "%LocalDataProjDir%/results/Bigshape_Bf.dbf";
+		}
+		container Steps {
+			unit<uint32> AllSteps: expr = "= 'union_unit('+AsItemList(IsDefined(LargeFUAs/NetLen) ? 'loadShapes/'+ LargeFUAs/ZoneId + '/Steps' : '')+')'" {
+				attribute<string> 	FUA: 			expr = "= 'union_data(.,' + AsItemList(IsDefined(LargeFUAs/NetLen) ? 'const('+quote(LargeFUAs/ZoneId)+', loadShapes/'+ LargeFUAs/ZoneId + '/Steps, string)' : '')+')'";
+				attribute<uint32> 	StepNr:			expr = "= 'union_data(.,' + AsItemList(IsDefined(LargeFUAs/NetLen) ? 'loadShapes/'+ LargeFUAs/ZoneId + '/Steps/Values' : '')+')'";
+				attribute<float32> 	CumuLength: 	expr = "= 'union_data(.,' + AsItemList(IsDefined(LargeFUAs/NetLen) ? 'loadShapes/'+ LargeFUAs/ZoneId + '/Steps/cumuLength' : '')+')'";
+				attribute<float32> 	CumuPop: 		expr = "= 'union_data(.,' + AsItemList(IsDefined(LargeFUAs/NetLen) ? 'loadShapes/'+ LargeFUAs/ZoneId + '/Steps/CumuPop' : '')+')'";
+				attribute<float32> 	cumuSharePop: 	expr = "= 'union_data(.,' + AsItemList(IsDefined(LargeFUAs/NetLen) ? 'loadShapes/'+ LargeFUAs/ZoneId + '/Steps/cumuSharePop' : '')+')'";
+			}
+		}
+	}	
+	
+	//Container BE001L2: expr = "GovernAnalysis(289)";
+	
+	Template GovernAnalysis: Using = "search_optimum_path;"
+	{
+		parameter<uint32> CityBoundaryId;
+		parameter<string>  Selection_Criterion: expr = "'Bf'";
+		//parameter<bool>   Compute_Network: expr = "True", ExplicitSuppliers = "Store/DefNetwork;";
+		
+		Container Setup: 		expr = "AnalysisSetup(CityBoundaryId)";
+		
+		Container init
+		{
+			parameter<uint16> NrIter: expr = "uint16(0 / 0)";
+			Container SelectODs: 	expr = "ODSelection(Setup/RelevantPoints, Setup/RelevantPoints, Setup/SelectedNetwork, Setup/SelectedNetwork/NodeSet)";
+			Container GenPath: 		expr = "ManageAltLinkGeneration(Setup/RelevantPoints, SelectODs/ODMatrix/path_From, SelectODs/ODMatrix/path_To, SelectODs/ODMatrix/maxdist, Setup/SelectedNetwork, Setup/SelectedNetwork/NodeSet)";
+			parameter<bool> go_on: expr = "genPath/TargetValue < ConnectGoal";
+		}
+		Container AllocationLoop: expr = "loop(CallAllocationLoop, uint16(500))";
+		
+		container Store
+		{
+			unit<uint32> DefNetwork: expr = "subset(AllocationLoop/LastIter/nextValue/genPath/newNetwork/upgrade)", StorageName = "= '%LocalDataProjDir%/results/'+ SourceData/CityBoundaries/ZoneId[CityBoundaryId] +'_'+Selection_Criterion+'_net.dbf'"
+			{
+				attribute<CoordSys> line (arc): 	expr = "AllocationLoop/LastIter/nextValue/genPath/newNetwork/line[Nr_OrgEntity]", StorageName = "= '%LocalDataProjDir%/results/'+ SourceData/CityBoundaries/ZoneId[CityBoundaryId] +'_'+Selection_Criterion+'_net.shp'";
+				attribute<uint16> 	Step: 			expr = "AllocationLoop/LastIter/nextValue/genPath/newNetwork/Step[Nr_OrgEntity]";
+			}
+		}
+	}
+	
+	Template CallAllocationLoop
+	{
+		parameter<uint16> NrIter;
+		container currValue: expr = "init";
+	    container nextValue
+		{
+			Container SelectODs: 	expr = "= !currValue/go_on ? 'currValue/SelectODs' : 'ODSelection(Setup/RelevantPoints, Setup/RelevantPoints, currValue/GenPath/newNetwork, currValue/GenPath/inNodeSet)'";
+			Container GenPath: 		expr = "= !currValue/go_on ? 'currValue/GenPath' : 'ManageAltLinkGeneration(Setup/RelevantPoints, SelectODs/ODMatrix/path_From, SelectODs/ODMatrix/path_To, SelectODs/ODMatrix/maxdist, currValue/GenPath/newNetwork, currValue/GenPath/inNodeSet)'";
+			parameter<bool> go_on: expr = "genPath/TargetValue < ConnectGoal";
+		}
+		
+	}
+	
+	Template ODSelection
+	{
+		unit<uint32> Origins;
+		unit<uint32> Destinations;
+		unit<uint32> CurrNetwork;
+		unit<uint32> CurrNodeSet;
+		
+		unit<uint32> ODMatrix: expr = "dijkstra_m('bidirectional;startPoint(Node_rel);endPoint(Node_rel);od:OrgZone_rel,DstZone_rel,impedance'
+				, CurrNetwork/impedance
+				, CurrNetwork/F1
+				, CurrNetwork/F2
+				, Origins/Entrypoint
+				, Destinations/Entrypoint)"
+		{
+			attribute<float32> dist: expr = "float32(dist(Origins/Point[OrgZone_rel], Destinations/Point[DstZone_rel]))";
+			attribute<float32> fpop: expr = "float32(Origins/Pop[OrgZone_rel])";
+			attribute<float32> dpop: expr = "float32(Destinations/Pop[DstZone_rel])";
+			attribute<float32> tbij: expr = "dist / Walkspeed";
+			attribute<float32> t0ij: expr = "impedance";
+			attribute<float32> t1ij: expr = "(dist / PTSpeed) + penalty"; 
+			
+			attribute<float32> F0ij: expr = "CurrFlows/Matrix/Tij 	+ CurrFlows/Matrix/Tji";
+			attribute<float32> F1ij: expr = "PotFlows/Matrix/Tij 	+ PotFlows/Matrix/Tji";
+			
+			attribute<float32> dAij: 	expr = "PotFlows/Matrix/Aid";
+			attribute<float32> rdAij:	expr = "fpop * (mean(PotFlows/Matrix/Ai0) - (PotFlows/Matrix/Ai0[OrgZone_rel] + dAij))";
+			
+			attribute<float32> B0ij: expr = "F0ij * dist";
+			attribute<float32> B1ij: expr = "F1ij * dist";
+			attribute<float32> Bf:	 expr = "B1ij - B0ij";
+
+			attribute<float32> B_eval: expr = "= Selection_Criterion";
+			attribute<float32> C_eval: expr = "Selection_Criterion = 'Bf' ? (float32(0.0001)*(dist + fixedcost)) : fixedcost";
+
+			attribute<float32> maxdist_t: 	expr = "max_elem((float32(0.5) * (t0ij + t1ij)) * PTSpeed, float32(dist))";
+			attribute<float32> maxdist_c: 	expr = "dist * Circuitry";
+			attribute<float32> maxdists:	expr = "min_elem(maxdist_t, maxdist_c)";
+			
+//			attribute<float32> BCR: expr = "t1ij < t0ij ? ((Bf) / (float32(0.0001)*(dist + fixedcost))) : (float32(-10000000000) + (float32(0.0001)*(dist + fixedcost)))";
+			attribute<bool>    OK:  expr = "t1ij < t0ij";
+			attribute<float32> BCR: expr = "OK ? ((B_eval) / C_eval) : (float32(-1000000) - dist - fixedcost)";
+			parameter<.> 	   BestBCR: expr = "max_index(BCR)";
+			parameter<Origins> path_From: 	expr = "OrgZone_rel[BestBCR]";
+			parameter<Origins> path_To: 	expr = "Destinations/LinkUp[DstZone_rel[BestBCR]]";
+			parameter<float32> maxdist:		expr = "maxdists[BestBCR]";
+			
+			container CurrFlows: 	expr = "getFlows_ij(., t0ij, fpop, dpop)";
+			container PotFlows:		expr = "getFlows1ij(., t1ij, t0ij, fpop, dpop)";
+		}
+		
+		Template getFlows_ij
+		{
+			unit<uint32> 		inMatrix;
+			
+			attribute<float32> 	inImpedance (inMatrix);
+			attribute<float32>  fromPop		(inMatrix);
+			attribute<float32>  toPop		(inMatrix);
+			
+			unit<uint32> Matrix: expr = "inMatrix"
+			{
+				attribute<float32>			Emission:	expr = "fromPop";
+				attribute<float32>			Attraction: expr = "toPop";
+				attribute<float32>			Fij:		expr = "iif(OrgZone_rel <> DstZone_rel, inImpedance ^ b1, float32(0))";
+				attribute<float32>			Ai (Origins):	expr = "float32(1) / sum(Attraction * Fij, OrgZone_rel)";
+				attribute<float32>			Aj (Destinations): expr = "float32(1) / sum(Emission * Fij, DstZone_rel)";
+				attribute<float32>			Tij:		expr = "(Ai[OrgZone_rel] ^(float32(1) - Alonso_a)) * Emission * Attraction * Fij";
+				attribute<float32>			Tji:		expr = "(Aj[DstZone_rel] ^(float32(1) - Alonso_a)) * Emission * Attraction * Fij";
+			}
+		}
+		Container getFlows1ij: IsTemplate = "True" 
+		{
+			unit<uint32> 		inMatrix;
+			
+			attribute<float32> 	inImpedance 	(inMatrix);
+			attribute<float32>  currImpedance	(inMatrix);
+			attribute<float32>  fromPop			(inMatrix);
+			attribute<float32>  toPop			(inMatrix);
+			
+			unit<uint32> Matrix: expr = "inMatrix"
+			{
+				attribute<float32>			Emission:	expr = "fromPop";
+				attribute<float32>			Attraction: expr = "toPop";
+				attribute<float32>			F0ij:		expr = "iif(OrgZone_rel <> DstZone_rel, currImpedance ^ b1, float32(0))";
+				attribute<float32>			F1ij:		expr = "iif(OrgZone_rel <> DstZone_rel, inImpedance ^ b1, float32(0))";
+				attribute<float32>			Aid: 	 	expr = "((Attraction * F1ij) - (Attraction * F0ij))";
+				attribute<float32>			Ajd:		expr = "((Emission * F1ij) - (Emission * F0ij))";
+				attribute<float32>			Ai0	(Origins): 	expr = "sum(Attraction * F0ij, OrgZone_rel)";
+				//attribute<float32>			Ai1(SourceData/Zones): 	expr = "float32(1) / sum(Attraction * F1ij, fromZone)";
+				//attribute<float32>			Ai (SourceData/Zones):	expr = "float32(1) / (Ai0)";
+				//attribute<float32>			Tij0:		expr = "((Ai0[fromZone]) ^ (float32(1) - params/Alonso_a)) * Emission * Attraction * F0ij";	
+				//attribute<float32>			Tij1:		expr = "((Ai1[fromZone]) ^ (float32(1) - params/Alonso_a)) * Emission * Attraction * F1ij";	
+				attribute<float32>			Tij:		expr = "((float32(1) / (Ai0[OrgZone_rel] + Aid)) ^ (float32(1) - Alonso_a)) * Emission * Attraction * F1ij";
+				attribute<float32>			Tji:		expr = "((float32(1) / (Ai0[DstZone_rel] + Ajd)) ^ (float32(1) - Alonso_a)) * Emission * Attraction * F1ij";
+			}
+		}
+		
+		
+		
+	}
+	
+	
+	
+	Template AnalysisSetup
+	{
+		parameter<uint32> CityBoundaryId;
+		
+		unit<uint32> CityObservations: expr = "subset(SourceData/PopulationGrid/CityBoundaryId = CityBoundaryId)", DialogData = "Point", DialogType = "map"
+		{
+			attribute<CoordSys>		Point: 			expr = "Nr_OrgEntity[CoordSys]";
+			attribute<int32> 		Pop: 			expr = "max_elem(MakeDefined(SourceData/PopulationGrid/ReadData[Nr_OrgEntity], 0i), 0i)";
+			attribute<bool>			SelectIssue: 	expr = "!any(FullNetwork/protosel, FullNetwork/nr_1) && !any(FullNetwork/protosel, FullNetwork/nr_2)";
+			attribute<float32> 		SelectIssueMinCost: 	expr = "min(FullNetwork/SelectIssueC, FullNetwork/nr_1)";
+			attribute<bool>			inHDC:			expr = "IsDefined(point_in_polygon(Point, SourceData/HDC/Geometry))";
+		}
+		unit<uint32> RelevantPoints: expr = "subset(CityObservations/Pop > int32(0) && proto_SelectedNetwork/OnBiggestNetwork)", DialogData = "Point", DialogType = "map"
+		{
+			attribute<CoordSys>	Point: 	expr = "CityObservations/Point[Nr_OrgEntity]";
+			attribute<int32> 	Pop: 	expr = "CityObservations/Pop[Nr_OrgEntity]";
+			attribute<SelectedNetwork/NodeSet>	Entrypoint: expr = "SelectedNetwork/EntryPoint";
+			attribute<.>		LinkUp: expr = "id(.)";
+		}
+		
+		unit<uint32> FullNetwork: expr = "combine(CityObservations, CityObservations)"
+		{
+			parameter<float32> horizontal_or_vertical_criterion: expr = "float32(1001)";
+			parameter<float32> other_criterion:					 expr = "float32(sqrt(float32(2*2001*2001)))";
+			
+			attribute<CoordSys> frompoint: 	expr = "CityObservations/Point[nr_1]";
+			attribute<CoordSys> topoint:		expr = "CityObservations/Point[nr_2]";
+			attribute<float32>	 dist:			expr = "float32(dist(frompoint, topoint))";
+			attribute<bool>		 SelectIssue:	expr = "(CityObservations/SelectIssue[nr_1] || CityObservations/SelectIssue[nr_2])";
+			attribute<float32> 	 SelectIssueC:	expr = "!same && SelectIssue ? dist : max(dist)";
+			attribute<bool> 	 horizontal:	expr = "pointrow(frompoint) = pointrow(topoint)";
+			attribute<bool> 	 vertical:		expr = "pointcol(frompoint) = pointcol(topoint)";
+			attribute<bool>		 same:			expr = "nr_1 = nr_2";
+			attribute<bool>		 diag_cut:		expr = "nr_1 < nr_2";
+			attribute<bool>		 hor_or_vert:	expr = "(horizontal || vertical) && (dist > horizontal_or_vertical_criterion && SelectIssueC > CityObservations/SelectIssueMinCost[nr_1])";
+			attribute<bool>		 too_long:		expr = "dist > other_criterion";
+			attribute<bool>		 westward:		expr = "pointcol(frompoint) > pointcol(topoint)";
+			attribute<bool>		 upward:		expr = "pointrow(frompoint) < pointrow(topoint)";
+			attribute<bool> 	 protosel:		expr = "diag_cut && !too_long";
+			attribute<bool> 	 sel:			expr = "protosel && !hor_or_vert";
+		}
+		unit<uint32> proto_SelectedNetwork: expr = "subset(FullNetwork/sel)", DialogData = "line", DialogType = "map"
+		{
+			attribute<CityObservations> i: 			expr = "FullNetwork/nr_1[Nr_OrgEntity]";
+			attribute<CityObservations> j: 			expr = "FullNetwork/nr_2[Nr_OrgEntity]";
+			attribute<CoordSys>		fpt:		expr = "CityObservations/Point[FullNetwork/nr_1[Nr_OrgEntity]]";
+			attribute<CoordSys>		tpt:		expr = "CityObservations/Point[j]";
+			attribute<CoordSys>		line (arc):	expr = "points2sequence(GenLines/points, GenLines/id)";
+			
+			unit<uint32> NodeSet: expr = "unique(GenLines/points)", DialogData = "Values", DialogType = "map";
+			
+			attribute<NodeSet> F1: 									expr = "rlookup(fpt, NodeSet/Values)";
+			attribute<NodeSet> F2: 									expr = "rlookup(tpt, NodeSet/Values)";
+			attribute<bool>	   PartOfBiggestNet: 					expr = "connectedNets/biggest[connectedNets/PartNr[F1]]";
+			attribute<bool>    OnBiggestNetwork (CityObservations): expr = "connectedNets/biggest[connectedNets/PartNr[rlookup(CityObservations/Point, NodeSet/Values)]]";
+			
+			unit<uint32> connectedNets: expr = "connected_parts(F1, F2)" {attribute<uint32> size: expr = "pcount(PartNr)"; attribute<bool> biggest: expr = "size + id(.) = max(size) + id(.)";} //id added to ensure unique outcome
+			
+			unit<uint32> GenLines: expr = "union_unit(proto_SelectedNetwork, proto_SelectedNetwork)"
+			{
+				attribute<CoordSys> 		points: expr = "union_data(., fpt, tpt)";
+				attribute<SelectedNetwork>	id:		expr = "union_data(., id(proto_SelectedNetwork), id(proto_SelectedNetwork))";
+			}
+		}
+		unit<uint32> SelectedNetwork: expr = "subset(proto_SelectedNetwork/PartOfBiggestNet)", DialogData = "line", DialogType = "map", IntegrityCheck = "float32(sum(RelevantPoints/Pop)) / float32(sum(CityObservations/Pop)) > float32(0.99)"
+		{
+			attribute<CityObservations> i: 			expr = "proto_SelectedNetwork/i[Nr_OrgEntity]";
+			attribute<CityObservations> j: 			expr = "proto_SelectedNetwork/j[Nr_OrgEntity]";
+			attribute<CoordSys>		fpt:		expr = "CityObservations/Point[i]";
+			attribute<CoordSys>		tpt:		expr = "CityObservations/Point[j]";
+			attribute<int32>			fpop:		expr = "CityObservations/Pop[i]";
+			attribute<int32>			tpop:		expr = "CityObservations/Pop[j]";
+			attribute<float32>			dij:		expr = "FullNetwork/dist[proto_SelectedNetwork/Nr_OrgEntity[Nr_OrgEntity]]";
+			attribute<CoordSys>		line (arc):	expr = "proto_SelectedNetwork/line[Nr_OrgEntity]";
+			attribute<float32>			length:		expr = "dij";
+			attribute<float32>			impedance:  expr = "dij / WalkSpeed";
+			attribute<bool>				upgrade:	expr = "const(False, ., bool)";
+			attribute<uint16>  			Step:		expr = "const(uint16(0 / 0),.,uint16)";
+			attribute<float32>			ConstructionBenefits: 	expr = "float32(fpop + tpop)";
+			attribute<float32> 			ConstructionCosts:		expr = "dij";
+			
+			unit<uint32> PointSet: expr = "union_unit(SelectedNetwork, SelectedNetwork)" {attribute<CoordSys> points: expr = "union_data(., fpt, tpt)";}
+			unit<uint32> NodeSet: expr = "unique(PointSet/points)", DialogData = "Values", DialogType = "map";
+			
+			attribute<NodeSet> F1: expr = "rlookup(fpt, NodeSet/Values)";
+			attribute<NodeSet> F2: expr = "rlookup(tpt, NodeSet/Values)";
+			
+			attribute<NodeSet> Entrypoint (RelevantPoints): expr = "rlookup(RelevantPoints/Point, NodeSet/Values)";
+		}
+	}
+	
+}

@@ -1,0 +1,98 @@
+container sensitivity_tests {
+			
+	unit<uint32> SelectedFUAs: expr = "SourceData/SelectedFUAs";
+	
+	//	cities to run 
+	unit<uint32> test_cities: NrOfRows = 6 {
+		attribute<string> 			ZoneId: ['FUA_73', 'FUA_5465', 'FUA_146', 'FUA_2940', 'FUA_4946', 'FUA_4444'];
+		attribute<SelectedFUAs> 	lf_id:	expr = "rlookup(ZoneId, SelectedFUAs/ZoneId)";
+		attribute<string>			LabelText: expr= "ZoneId", DialogType = "LabelText";
+		attribute<string>			Name: 	expr = "SourceData/SelectedCities/name[rlookup(ZoneId, 'FUA_' + string(SourceData/SelectedCities/FUA_code))]";
+		attribute<int32>			Pop:	expr = "SelectedFUAs/pop[rlookup(ZoneId, SelectedFUAs/ZoneId)]";
+	}
+	
+	unit<uint32> analysisresults: expr = "range(uint32, 0, #test_cities * sum(runs/resultsavbl))" {
+		attribute<test_cities> nr_1: 		expr = "rlookup(id(.) / sum(runs/resultsavbl), id(test_cities))";
+		attribute<uint32>	   ord_2:		expr = "cumulate(const(1,.,uint32), nr_1)";
+		attribute<runs>		   nr_2: 		expr = "rlookup(ord_2, runs/ord)";
+		attribute<string>	   cityname:	expr = "test_cities/ZoneId[nr_1]";
+		attribute<string>	   run:			expr = "runs/run[nr_2]";
+		attribute<float32>	   WalkSpeed:	expr = "(runs/WalkSpeed[nr_2] * float32(60 * 60)) / 1000f";
+		attribute<float32>	   PTSpeed:		expr = "(runs/PTSpeed[nr_2] * float32(60 * 60)) / 1000f";
+		attribute<float32>	   b1:			expr = "runs/b1[nr_2]";
+		attribute<float32>	   fixedcost:	expr = "runs/fixedcost[nr_2]";
+		attribute<float32>	   Circuitry:	expr = "runs/Circuitry[nr_2]";
+		attribute<float32>	   penalty:		expr = "runs/penalty[nr_2]";
+		attribute<float32>	   length:		expr = "= 'union_data(.,'+AsItemList('AnalyserPerRun/'+runs/run[nr_2]+'/AnalysePerFua/'+test_cities/ZoneId[nr_1]+'/Load/RealStatistics/length')+')'";
+		attribute<uint32>	   maxstep:		expr = "= 'union_data(.,'+AsItemList('AnalyserPerRun/'+runs/run[nr_2]+'/AnalysePerFua/'+test_cities/ZoneId[nr_1]+'/Load/RealStatistics/maxstep')+')'";
+		attribute<SelectedFUAs>selFUA_id: 	expr = "rlookup(cityname, SelectedFUAs/ZoneId)";
+		attribute<float32> 	   pwd:			expr = "SelectedFUAs/pwd[selFUA_id]";
+		attribute<int32> 	   pop:			expr = "SelectedFUAs/pop[selFUA_id]";
+		attribute<int32> 	   HDC_Pop:		expr = "SelectedFUAs/HDC_Pop[selFUA_id]";
+	}
+	
+	container AnalyserPerRun: 	expr = "for_each_ne(runs/run, 'GovernRunSet('+string(id(runs))+')')";
+	container Maximize_Ai:		expr = "for_each_ne(test_cities/ZoneId, 'GovernAnalysis('+string(test_cities/lf_id)+', '+quote('dAij')+')')";
+	container Maximize_rdAi:	expr = "for_each_ne(test_cities/ZoneId, 'GovernAnalysis('+string(test_cities/lf_id)+', '+quote('rdAij')+')')";
+	
+	unit<uint32> runs: NrOfRows = 100 {
+		attribute<string>  run:			expr = "'r_'+string(id(.))";
+		attribute<float32> WalkSpeed: 	expr = "(rnd_uniform(0,., range(float32,3.0f,5.0f)) * 1000f) / float32(60 * 60)";
+		attribute<float32> PTSpeed:		expr = "(rnd_uniform(2,., range(float32,15.0f,45.0f)) * 1000f) / float32(60 * 60)";
+		attribute<float32> b1:			expr = "rnd_uniform(4,., range(float32,-1.0f,-2.0f))";
+		attribute<float32> alonso_a:	expr = "const(0,.,float32)";
+		attribute<float32> fixedcost:	expr = "rnd_uniform(6,., range(float32,0f,20000f))";
+		attribute<float32> Circuitry:	expr = "rnd_uniform(8,., range(float32,1.1f,1.9f))";
+		attribute<float32> ConnectGoal:	expr = "const(0.8f,.,float32)";
+		attribute<float32> penalty:		expr = "rnd_uniform(10,., range(float32,0f,20f)) * 60f";
+		attribute<uint32>  resultsavbl:	expr = "uint32(id(.) < 28 || id(.) > 85)";
+		attribute<uint32>  ord:			expr = "cumulate(resultsavbl)";
+	}
+	
+	Template GovernRunSet {
+		parameter<runs> inRun;
+		
+		container AnalysePerFua: expr = "for_each_ne(test_cities/ZoneId, 'GovernAnalysis_senstest('+string(id(test_cities))+','+string(inRun)+')')";
+		
+		//parameter<bool> StoreAll: expr = "True", ExplicitSuppliers = "= AsList('AnalysePerFua/'+test_cities/ZoneId+'/Store/DefNetwork',';')";
+	}
+	
+	
+	Template GovernAnalysis_senstest: Using = "search_optimum_path;"
+	{
+		parameter<uint32> CityBoundaryId;
+		parameter<uint32> inRun;
+		parameter<float32> WalkSpeed: 			expr = "runs/WalkSpeed[inRun]";
+		parameter<float32> PTSpeed: 			expr = "runs/PTSpeed[inRun]";
+		parameter<float32> b1: 					expr = "runs/b1[inRun]";
+		parameter<float32> alonso_a: 			expr = "runs/alonso_a[inRun]";
+		parameter<float32> fixedcost: 			expr = "runs/fixedcost[inRun]";
+		parameter<float32> Circuitry: 			expr = "runs/Circuitry[inRun]";
+		parameter<float32> ConnectGoal: 		expr = "runs/ConnectGoal[inRun]";
+		parameter<float32> penalty: 			expr = "runs/penalty[inRun]";
+		parameter<string>  Selection_Criterion: expr = "'Bf'";
+		
+		//parameter<bool>   Compute_Network: expr = "True", ExplicitSuppliers = "Store/DefNetwork;";
+		
+		Container Setup: 		expr = "= 'LargeFUAs/'+test_cities/ZoneId[CityBoundaryId]+'/Setup'";
+		Container init
+		{
+			parameter<uint16> NrIter: expr = "uint16(0 / 0)";
+			Container SelectODs: 	expr = "ODSelection(Setup/RelevantPoints, Setup/RelevantPoints, Setup/SelectedNetwork, Setup/SelectedNetwork/NodeSet)";
+			Container GenPath: 		expr = "ManageAltLinkGeneration(Setup/RelevantPoints, SelectODs/ODMatrix/path_From, SelectODs/ODMatrix/path_To, SelectODs/ODMatrix/maxdist, Setup/SelectedNetwork, Setup/SelectedNetwork/NodeSet)";
+			parameter<bool> go_on: expr = "genPath/TargetValue < ConnectGoal";
+		}
+		Container AllocationLoop: expr = "loop(CallAllocationLoop, uint16(600))";
+		
+		container Store
+		{
+			unit<uint32> DefNetwork: expr = "subset(AllocationLoop/LastIter/nextValue/genPath/newNetwork/upgrade)", StorageName = "= '%LocalDataProjDir%/sensitivity/'+runs/run[inRun]+'/'+test_cities/ZoneId[CityBoundaryId] +'_net.dbf'"
+			{
+				attribute<CoordSys> line (arc): 	expr = "AllocationLoop/LastIter/nextValue/genPath/newNetwork/line[Nr_OrgEntity]", StorageName = "= '%LocalDataProjDir%/sensitivity/'+runs/run[inRun]+'/'+test_cities/ZoneId[CityBoundaryId] +'_net.shp'";
+				attribute<uint16> 	Step: 			expr = "AllocationLoop/LastIter/nextValue/genPath/newNetwork/Step[Nr_OrgEntity]";
+			}
+		}
+		container Load: expr = "Templates/loadDataFile_arc('%LocalDataProjDir%/sensitivity/'+runs/run[inRun]+'/'+test_cities/ZoneId[CityBoundaryId] +'_net')";
+	}
+	
+}

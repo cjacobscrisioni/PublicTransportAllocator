@@ -1,0 +1,85 @@
+container SourceData
+{
+	unit<uint32> CityBoundaries: expr = "SelectedFUAs";
+	
+	unit<wpoint> PopulationGrid: StorageName = "%dataDir%/Population/GHS_POP_E2015_GLOBE_R2019A_54009_1K_V1_0.tif", StorageType = "gdal.grid", StorageReadOnly = "True", DialogData = "CoordSys"
+	{
+		attribute<int32> 			ReadData;
+		attribute<CityBoundaries>	CityBoundaryId: expr = "poly2grid(CityBoundaries/Geometry, ., 1)";
+		attribute<CityBoundaries>	HdcId:			expr = "poly2grid(CityBoundaries/HDC_geom, ., 1)";
+		attribute<float32> 			PWD_elem: 		expr = "MakeDefined(float32(max_elem(ReadData*ReadData, int32(0))) / float32(CityBoundaries/Pop[CityBoundaryId]), float32(0))";
+		attribute<float32>			PWD_elem_HDC:	expr = "MakeDefined(float32(max_elem(ReadData*ReadData*int32(IsDefined(HdcId)), int32(0))) / float32(CityBoundaries/HDC_Pop[CityBoundaryId]), float32(0))";
+		attribute<float32>			PWD_elem_Comm:	expr = "MakeDefined(float32(max_elem(ReadData*ReadData*int32(IsNull(HdcId)), int32(0))) / float32(CityBoundaries/Comm_Pop[CityBoundaryId]), float32(0))";
+	}
+	unit<uint32> FUA:  StorageName = "%dataDir%/FUAs/Global_FUA_regions_ldd_la_lpp_lg_100_tmulti__v19E.shp", StorageReadOnly = "True", StorageType = "gdal.vect", DialogData = "Geometry"
+	{
+		attribute<CoordSys> Geometry (poly);
+		attribute<string> 	ZoneId: 		Expr = "'FUA_'+string(FUA_code)";
+		attribute<SelectedCities> SC_Id: 	Expr = "rlookup(uint32(FUA_code), SelectedCities/FUA_code)";
+	}
+	unit<uint32> HDC: StorageName = "%dataDir%/FUAs/INPUT_HDC_split/FUAS_HDC-SHDC_g50K_fix.shp", StorageReadOnly = "True", StorageType = "gdal.vect", DialogData = "Geometry"
+	{
+		attribute<CoordSys> 	Geometry (poly);
+		attribute<FUA>			FuaId: 			expr = "rlookup(Fua_code, FUA/Fua_code)";
+	}
+	unit<uint32> SelectedFUAs: expr = "subset(!isNull(FUA/SC_Id))", DialogData = "Geometry" {
+		attribute<CoordSys> Geometry (poly): 	expr = "FUA/Geometry[Nr_OrgEntity]";
+		attribute<CoordSys> HDC_geom (poly):	expr = "rjoin(Nr_OrgEntity, HDC/FuaId, HDC/Geometry)";
+		attribute<string> 	Name:				expr = "FUA/FUA_Main_na[Nr_OrgEntity]";
+		attribute<string>   ZoneId:				expr = "FUA/ZoneId[Nr_OrgEntity]";
+		attribute<int32>	Pop:				expr = "sum(PopulationGrid/ReadData, PopulationGrid/CityBoundaryId)";
+		attribute<int32>	HDC_Pop:			expr = "sum(PopulationGrid/ReadData, PopulationGrid/HdcId)";
+		attribute<int32>	Comm_Pop:			expr = "max_elem(Pop - HDC_Pop, 0i)";
+		attribute<float32>  Pwd:				expr = "sum(PopulationGrid/PWD_elem, PopulationGrid/CityBoundaryId)";
+		attribute<float32>	Pwd_HDC:			expr = "sum(PopulationGrid/PWD_elem_HDC, PopulationGrid/CityBoundaryId)";
+		attribute<float32>	Pwd_Comm:			expr = "sum(PopulationGrid/PWD_elem_Comm, PopulationGrid/CityBoundaryId)";
+	}
+	unit<uint32> SelectedCities: NrOfRows = 37 {
+		attribute<string> Name: 	expr = "inMatrix/Values[((id(.)*3)+0)[inMatrix]]";
+		attribute<string> Region: 	expr = "inMatrix/Values[((id(.)*3)+1)[inMatrix]]";
+		attribute<uint32> Fua_code: expr = "uint32(inMatrix/Values[((id(.)*3)+2)[inMatrix]])";
+		
+		unit<uint32> inMatrix: expr = "range(uint32, 0, #SelectedCities * 3)" {
+			attribute<string> Values: [
+				//'City',			'World region',		'FUA Code',
+				'Tokyo',			'Asia',				'5129',
+				'Hong Kong',		'Asia',				'73',
+				'Shenzhen',			'Asia',				'9725',
+				'Pyongyang',		'Asia',				'3324',
+				'Jakarta',			'Asia',				'4897',
+				'Mumbai',			'Asia',				'7163',
+				'Lagos',			'Africa',			'865',
+				'Accra',			'Africa',			'2940',
+				'Cape Town',		'Africa',			'189',
+				'Casablanca',		'Africa',			'1785',
+				'Cairo',			'Africa',			'3981',
+				'Kinshasa',			'Africa',			'1385',
+				'Sao Paolo',		'South America',	'6567',
+				'Rio de Janeiro',	'South America',	'6961',
+				'Lima',				'South America',	'2327',
+				'Santiago',			'South America',	'2072',
+				'Bogota',			'South America',	'4048',
+				'Brasilia',			'South America',	'5465',
+				'Mexico city',		'Middle America',	'5006',
+				'Houston',			'North America',	'5511',
+				'Atlanta',			'North America',	'6451',
+				'Los Angeles',		'North America',	'1642',
+				'Portland',			'North America',	'4444',
+				'Montreal',			'North America',	'3485',
+				'New York',			'North America',	'7244',
+				'Dortmund',			'Europe',			'536',
+				'Berlin',			'Europe',			'4946',
+				'Paris',			'Europe',			'2702',
+				'Sevilla',			'Europe',			'2008',
+				'London',			'Europe',			'5288',
+				'Moscow',			'Europe',			'2262',
+				'Tehran', 			'Middle East',		'4686',
+				'Riyadh', 			'Middle East',		'3327',
+				'Ho Chi Minh City',	'Asia',				'5038',
+				'Seoul', 			'Asia',				'64',
+				'Melbourne',		'Australia',		'1266',
+				'Doha',				'Middle East', 	 	'146'
+				];
+		}
+	}
+}

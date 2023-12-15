@@ -1,0 +1,79 @@
+Container NetworkStatistics {
+	
+	unit<uint32> FUAs: expr = "SourceData/SelectedFUAs" {
+		attribute<float32> intersection_density: expr= "= 'union_data(.,'+AsItemList('NetworkAnalyses/'+FUAs/ZoneId+'/Network/intersection_density')+')'";
+		attribute<float32> pi_index: expr= "= 'union_data(.,'+AsItemList('NetworkAnalyses/'+FUAs/ZoneId+'/Network/pi_index')+')'";
+		attribute<float32> circuity: expr= "= 'union_data(.,'+AsItemList('NetworkAnalyses/'+FUAs/ZoneId+'/Network/circuity')+')'";
+		attribute<float32> betweenness_centrality: expr= "= 'union_data(.,'+AsItemList('NetworkAnalyses/'+FUAs/ZoneId+'/Network/betweenness_centrality')+')'";
+	}
+	
+	container NetworkAnalyses:=for_each_ne(FUAs/ZoneId, 'doAnalyzeUndirectedNetwork(CollectLargeFUAresults/loadShapes/'+FUAs/ZoneId+'/inFile)');
+	
+	
+	
+	Template doAnalyzeUndirectedNetwork {
+		unit<uint32> inLines;
+	
+		unit<uint32> Network: expr = "inLines" {
+			
+			attribute<CoordSys> frompoint: 	expr = "first_node(inLines/Geometry)";
+			attribute<CoordSys> topoint: 	expr = "last_node(inLines/Geometry)";
+			attribute<float32>	length_km:	expr = "float32(arc_length(inLines/Geometry, float64)) / 1000f";
+			
+			unit<uint32> PointSet:= union_unit(Network, Network) {attribute<CoordSys> points:=union_data(.,frompoint, topoint);}
+			unit<uint32> NodeSet:=unique(PointSet/points), DialogData="Values", DialogType="map" {
+				attribute<uint32>	nFrom:=pcount(F1);
+				attribute<uint32>	nTo:=pcount(F2);
+				attribute<bool>		intersection:=(nFrom+nTo)>2;
+				attribute<bool> 	biggest:=parts/partnr = max_index(parts/count);
+				attribute<float32>	eccentricity:=biggest ? max(Matrix/impedance, Matrix/OrgZone_rel) : 0f / 0f;
+				attribute<bool>		centre:=eccentricity=min(eccentricity);
+				attribute<uint32>   npaths:=sum(passed, F1);
+			}
+			attribute<uint32>  	passed:	expr = "pcount(Matrix/links/point)";		
+			
+			attribute<NodeSet> F1:=rlookup(frompoint,NodeSet/Values);
+			attribute<NodeSet> F2:=rlookup(topoint,NodeSet/Values);
+			
+			unit<uint32> parts:=connected_parts(F1, F2) {
+				attribute<uint32> count: expr = "pcount(partnr)";
+			}
+			
+			unit<uint32> Matrix:=dijkstra_m('bidirectional;startPoint(Node_rel);endPoint(Node_rel);od:OrgZone_rel,DstZone_rel,impedance,LinkSet'
+				, length_km
+				, F1
+				, F2
+				, id(NodeSet)
+				, id(NodeSet)) {
+					unit<uint32> links := sequence2points(linkset) {
+						attribute<CoordSys> Line (arc): 	expr = "Network/line[links/Point]";
+					}
+					attribute<float32> biggest_net:		expr = "float32(NodeSet/biggest[OrgZone_rel])";
+					attribute<float32> eucl_dist_km: 	expr = "float32(dist(NodeSet/Values[OrgZone_rel], NodeSet/Values[DstZone_rel])) / 1000f";
+				}
+			parameter<float32> netlength:				expr = "sum(Network/length_km * float32(NodeSet/biggest[F1]))";	
+			parameter<float32> longest: 				expr = "max(Matrix/biggest_net * Matrix/impedance)";
+			parameter<float32> totlength:				expr = "sum(Matrix/biggest_net * Matrix/impedance)";
+			parameter<float32> tot_eucl:				expr = "sum(Matrix/biggest_net * Matrix/eucl_dist_km)";
+			parameter<float32> intersection_density:	expr = "mean(float32(NodeSet/intersection))"; 
+			/*Intersection density is the node density of the set of nodes with more than one street emanating from them (thus excluding dead-ends).*/
+			parameter<float32> pi_index:				expr = "netlength / longest"; 
+			/*The relationship between the total length of the graph L(G) and the distance along its diameter D(d). It is labeled as Pi because of its similarity with the real Pi value (https://transportgeography.org/contents/methods/graph-theory-measures-indices/)*/
+			parameter<float32> circuity:				expr = "totlength / tot_eucl";
+			/*Circuity, which quantifies this deviation from a distance-minimizing straight line, is the ratio of network to Euclidean distance (Giacomin & Levinson, 2015)*/
+			parameter<float32> betweenness_centrality:	expr = "float32(max(NodeSet/npaths)) / sum(Matrix/biggest_net)"; 
+			/* Betweenness centrality evaluates the number of shortest paths that pass through each node or edge (Barthélemy, 2004). 
+			The maximum betweenness centrality in a network specifies the proportion of shortest paths that pass through themost important node/edge. (Boeing, 2017)*/
+			
+		}
+		
+	
+	
+	}
+	
+	
+	
+	
+	
+	
+}
